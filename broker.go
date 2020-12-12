@@ -11,7 +11,7 @@ import (
 	"github.com/dghubble/trie"
 )
 
-// Broker ...
+// Broker represents the message broker.
 type Broker struct {
 	ctx              context.Context
 	cancelFunc       context.CancelFunc
@@ -27,7 +27,8 @@ type topic struct {
 	Subscribers map[uint64]*Subscriber
 }
 
-// Message contains the topic name and the payload
+// Message contains the topic name the message was sent to and the
+// payload.
 type Message struct {
 	Topic   string
 	Payload interface{}
@@ -48,7 +49,7 @@ const (
 	defaultUnsubscribeChanLen = 5
 )
 
-// New ...
+// New returns a new broker.
 func New() *Broker {
 	ctx, cancelFunc := context.WithCancel(context.Background())
 
@@ -64,7 +65,8 @@ func New() *Broker {
 	return broker
 }
 
-// Subscribe ...
+// Subscribe creates a subscription and asks the broker to add it to
+// its subscribers.
 func (b *Broker) Subscribe(topicName string) *Subscriber {
 	// Create and add subscriber
 	subscriber := Subscriber{
@@ -79,7 +81,7 @@ func (b *Broker) Subscribe(topicName string) *Subscriber {
 	return &subscriber
 }
 
-// Publish message to broker
+// Publish a payload to topic.
 func (b *Broker) Publish(topic string, payload interface{}, timeout time.Duration) error {
 	m := Message{
 		Topic:   topic,

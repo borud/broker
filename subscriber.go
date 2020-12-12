@@ -1,6 +1,6 @@
 package broker
 
-// Subscriber ...
+// Subscriber represents a subscription to a topic or topic prefix.
 type Subscriber struct {
 	id            uint64
 	topicName     string
@@ -8,7 +8,7 @@ type Subscriber struct {
 	unsubscribeCh chan unsubscribe
 }
 
-// Messages returns the message channel
+// Messages returns the message channel.
 func (s *Subscriber) Messages() <-chan Message {
 	return s.downstreamCh
 }
