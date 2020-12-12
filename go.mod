@@ -1,4 +1,4 @@
-module github.com/borud/pubsub
+module github.com/borud/broker
 
 go 1.15
 
