@@ -39,7 +39,7 @@ subscribers listening to it.  If a message is published to a topic
 that has no subscribers, nothing will happen and the message is
 silently discarded.
 
-Topics are hierarcical and look like filesyste paths and matching is
+Topics are hierarchical and look like filesyste paths and matching is
 by path prefix.
 
     /house/bedroom/light
