@@ -1,6 +1,6 @@
-# pubsub
+# Broker - a minimal pubsub
 
-[![PkgGoDev](https://pkg.go.dev/badge/github.com/borud/pubsub)](https://pkg.go.dev/github.com/borud/pubsub)
+[![PkgGoDev](https://pkg.go.dev/badge/github.com/borud/broker)](https://pkg.go.dev/github.com/borud/broker)
 
 pubsub is a very small library for implementing the simplest possible
 publish-subscribe mechanism for Go using channels. 
