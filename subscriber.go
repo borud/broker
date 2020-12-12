@@ -6,6 +6,7 @@ type Subscriber struct {
 	topicName     string
 	downstreamCh  chan Message
 	unsubscribeCh chan unsubscribe
+	broker        *Broker
 }
 
 // Messages returns the message channel.
@@ -14,9 +15,14 @@ func (s *Subscriber) Messages() <-chan Message {
 }
 
 // Cancel cancels the subscription
-func (s *Subscriber) Cancel() {
+func (s *Subscriber) Cancel() error {
+	if s.broker.isClosed.Load() != nil {
+		return ErrBrokerClosed
+	}
+
 	s.unsubscribeCh <- unsubscribe{
 		id:        s.id,
 		topicName: s.topicName,
 	}
+	return nil
 }

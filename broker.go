@@ -20,6 +20,10 @@ type Broker struct {
 	subscribeCh      chan Subscriber
 	unsubscribeCh    chan unsubscribe
 	lastSubscriberID uint64
+	closed           chan interface{}
+	// fetching an atomic value is fast, so we use this as a flag to
+	// determine if writing to the channels is going to be safe.
+	isClosed atomic.Value
 }
 
 type topic struct {
@@ -42,6 +46,9 @@ type unsubscribe struct {
 // ErrTimedTimedOut operation timed out
 var ErrTimedTimedOut = errors.New("Operation timed out")
 
+// ErrBrokerClosed the broker has been closed
+var ErrBrokerClosed = errors.New("Broker has been closed")
+
 const (
 	defaultDownstreamChanLen  = 5
 	defaultPublishChanlen     = 5
@@ -60,6 +67,7 @@ func New() *Broker {
 		publishCh:     make(chan Message, defaultPublishChanlen),
 		subscribeCh:   make(chan Subscriber, defaultSubscribeChanLen),
 		unsubscribeCh: make(chan unsubscribe, defaultUnsubscribeChanLen),
+		closed:        make(chan interface{}),
 	}
 	go broker.mainLoop()
 	return broker
@@ -67,22 +75,31 @@ func New() *Broker {
 
 // Subscribe creates a subscription and asks the broker to add it to
 // its subscribers.
-func (b *Broker) Subscribe(topicName string) *Subscriber {
+func (b *Broker) Subscribe(topicName string) (*Subscriber, error) {
+	if b.isClosed.Load() != nil {
+		return nil, ErrBrokerClosed
+	}
+
 	// Create and add subscriber
 	subscriber := Subscriber{
 		id:            atomic.AddUint64(&b.lastSubscriberID, 1),
 		topicName:     topicName,
 		downstreamCh:  make(chan Message, defaultDownstreamChanLen),
 		unsubscribeCh: b.unsubscribeCh,
+		broker:        b,
 	}
 
 	b.subscribeCh <- subscriber
 
-	return &subscriber
+	return &subscriber, nil
 }
 
 // Publish a payload to topic.
 func (b *Broker) Publish(topic string, payload interface{}, timeout time.Duration) error {
+	if b.isClosed.Load() != nil {
+		return ErrBrokerClosed
+	}
+
 	m := Message{
 		Topic:   topic,
 		Payload: payload,
@@ -98,7 +115,9 @@ func (b *Broker) Publish(topic string, payload interface{}, timeout time.Duratio
 
 // Shutdown broker
 func (b *Broker) Shutdown() {
+	b.isClosed.Store(new(interface{}))
 	b.cancelFunc()
+	<-b.closed
 }
 
 func (b *Broker) mainLoop() {
@@ -213,4 +232,5 @@ func (b *Broker) shutdownInternal() {
 	if err != nil {
 		log.Printf("Error shutting down, Walk returned an error: %v", err)
 	}
+	close(b.closed)
 }
