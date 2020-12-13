@@ -1,7 +1,6 @@
 package broker
 
 import (
-	"log"
 	"sync"
 	"testing"
 	"time"
@@ -14,49 +13,62 @@ func TestBroker(t *testing.T) {
 	b := New()
 	defer b.Shutdown()
 
-	var wg1 sync.WaitGroup
-	wg1.Add(2)
+	var wgSubscribed sync.WaitGroup
+	wgSubscribed.Add(2)
+
+	var wgCount sync.WaitGroup
+	wgCount.Add(3)
 
 	// Top level subscriber.  This one should get all messages that
 	// match the "/a" prefix.
-	go func() {
-		sub, err := b.Subscribe("/a")
+	{
+		sub1, err := b.Subscribe("/a")
 		assert.Nil(t, err)
-		assert.NotNil(t, sub)
-
-		wg1.Done()
-		for msg := range sub.Messages() {
-			log.Printf("sub /a   : %+v", msg)
-		}
-	}()
+		assert.NotNil(t, sub1)
+		mChan1 := sub1.Messages()
+		go func() {
+			wgSubscribed.Done()
+			for range mChan1 {
+				wgCount.Done()
+			}
+		}()
+	}
 
 	// Leaf node subscriber.  This one should not get anything
 	// published to "/a" top level node.
-	go func() {
-		sub, err := b.Subscribe("/a/b")
+	{
+		sub2, err := b.Subscribe("/a/b")
 		assert.Nil(t, err)
-		assert.NotNil(t, sub)
+		assert.NotNil(t, sub2)
+		mChan2 := sub2.Messages()
+		go func() {
+			wgSubscribed.Done()
+			for range mChan2 {
+				wgCount.Done()
+			}
+		}()
+	}
 
-		wg1.Done()
-		for msg := range sub.Messages() {
-			log.Printf("sub /a/b : %+v", msg)
-		}
-	}()
+	wgSubscribed.Wait()
 
-	var err error
-
-	wg1.Wait()
-
-	err = b.Publish("/a", "should be received by A", time.Millisecond)
+	err := b.Publish("/a", "should be received by A", 100*time.Millisecond)
 	assert.Nil(t, err)
 
-	err = b.Publish("/a/b", "should be received by both", time.Millisecond)
+	err = b.Publish("/a/b", "should be received by both", 100*time.Millisecond)
 	assert.Nil(t, err)
 
-	err = b.Publish("/something/else", "foo", time.Millisecond)
-	assert.Nil(t, err)
+	wgCount.Wait()
+}
 
-	time.Sleep(100 * time.Millisecond)
+func TestDoubleMessages(t *testing.T) {
+	b := New()
+	defer b.Shutdown()
+	sub, err := b.Subscribe("/foo")
+	assert.Nil(t, err)
+	assert.NotNil(t, sub)
+
+	sub.Messages()
+	sub.Messages()
 }
 
 func TestShutdown(t *testing.T) {

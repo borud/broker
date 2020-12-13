@@ -82,15 +82,13 @@ func (b *Broker) Subscribe(topicName string) (*Subscriber, error) {
 
 	// Create and add subscriber
 	subscriber := Subscriber{
-		id:            atomic.AddUint64(&b.lastSubscriberID, 1),
-		topicName:     topicName,
-		downstreamCh:  make(chan Message, defaultDownstreamChanLen),
-		unsubscribeCh: b.unsubscribeCh,
-		broker:        b,
+		id:           atomic.AddUint64(&b.lastSubscriberID, 1),
+		topicName:    topicName,
+		downstreamCh: make(chan Message, defaultDownstreamChanLen),
+		broker:       b,
+		subscribed:   make(chan interface{}),
 	}
-
 	b.subscribeCh <- subscriber
-
 	return &subscriber, nil
 }
 
@@ -132,6 +130,8 @@ func (b *Broker) mainLoop() {
 		case unsubMessage := <-b.unsubscribeCh:
 			b.unsubscribeInternal(unsubMessage)
 
+		case <-time.After(100 * time.Millisecond):
+
 		case <-b.ctx.Done():
 			b.shutdownInternal()
 			return
@@ -156,6 +156,10 @@ func (b *Broker) subscribeInternal(sub Subscriber) error {
 	}
 
 	topic.Subscribers[sub.id] = &sub
+
+	// Signal that we are now subscribed
+	close(sub.subscribed)
+
 	return nil
 }
 
@@ -198,7 +202,7 @@ func (b *Broker) publishInternal(m Message) {
 			case sub.downstreamCh <- m:
 				deliveryCount++
 
-			case <-time.After(100 * time.Millisecond):
+			case <-time.After(20 * time.Millisecond):
 				droppedCount++
 			}
 		}
@@ -223,7 +227,6 @@ func (b *Broker) shutdownInternal() {
 		}
 
 		for _, sub := range t.Subscribers {
-			log.Printf("Closed subscription %d", sub.id)
 			close(sub.downstreamCh)
 		}
 		return nil

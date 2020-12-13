@@ -2,15 +2,16 @@ package broker
 
 // Subscriber represents a subscription to a topic or topic prefix.
 type Subscriber struct {
-	id            uint64
-	topicName     string
-	downstreamCh  chan Message
-	unsubscribeCh chan unsubscribe
-	broker        *Broker
+	id           uint64
+	topicName    string
+	downstreamCh chan Message
+	broker       *Broker
+	subscribed   chan interface{}
 }
 
 // Messages returns the message channel.
 func (s *Subscriber) Messages() <-chan Message {
+	<-s.subscribed
 	return s.downstreamCh
 }
 
@@ -20,7 +21,7 @@ func (s *Subscriber) Cancel() error {
 		return ErrBrokerClosed
 	}
 
-	s.unsubscribeCh <- unsubscribe{
+	s.broker.unsubscribeCh <- unsubscribe{
 		id:        s.id,
 		topicName: s.topicName,
 	}
