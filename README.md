@@ -15,18 +15,21 @@ publish-subscribe mechanism for Go using channels.
 		
 **Subscribe to topic or topic prefix**
 		
-    sub := broker.Subscribe("/foo/bar")
-	for msg := range sub.Messages() {
-		log.Printf("topic = '%s', message = '%+v'", msg.Topic, msg.Payload)
-	}
+    sub, err := broker.Subscribe("/foo/bar")
 	
+**Fetch messages from subscription***
+
+    for msg := range sub.Messages() {
+        log.Printf("topic = '%s', message = '%+v'", msg.Topic, msg.Payload)
+    }
+
 **Publish message to broker**
 
-    broker.Publish("/foo", "some payload")
+    err := broker.Publish("/foo", "some payload")
 	
 **Cancel a subscription**
 	
-	sub.Cancel()
+	err := sub.Cancel()
 
 **Shut down broker**
 
