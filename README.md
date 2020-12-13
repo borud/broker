@@ -17,7 +17,7 @@ publish-subscribe mechanism for Go using channels.
 		
     sub, err := broker.Subscribe("/foo/bar")
 	
-**Fetch messages from subscription***
+**Fetch messages from subscription**
 
     for msg := range sub.Messages() {
         log.Printf("topic = '%s', message = '%+v'", msg.Topic, msg.Payload)
