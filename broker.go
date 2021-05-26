@@ -211,6 +211,7 @@ func (b *Broker) publishInternal(m Message) {
 
 			case <-time.After(b.deliveryTimeout):
 				atomic.AddUint64(&b.droppedCount, 1)
+				log.Printf("dropped message after deliveryTimeout: %+v", m)
 			}
 		}
 		return nil
