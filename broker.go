@@ -23,7 +23,10 @@ type Broker struct {
 	closed           chan interface{}
 	// fetching an atomic value is fast, so we use this as a flag to
 	// determine if writing to the channels is going to be safe.
-	isClosed atomic.Value
+	isClosed        atomic.Value
+	deliveryTimeout time.Duration
+	deliveryCount   uint64
+	droppedCount    uint64
 }
 
 type topic struct {
@@ -44,7 +47,7 @@ type unsubscribe struct {
 }
 
 // ErrTimedTimedOut operation timed out
-var ErrTimedTimedOut = errors.New("Operation timed out")
+var ErrTimedTimedOut = errors.New("operation timed out")
 
 // ErrBrokerClosed the broker has been closed
 var ErrBrokerClosed = errors.New("Broker has been closed")
@@ -54,6 +57,8 @@ const (
 	defaultPublishChanlen     = 5
 	defaultSubscribeChanLen   = 5
 	defaultUnsubscribeChanLen = 5
+
+	defaultDeliveryTimeout = 100 * time.Millisecond
 )
 
 // New returns a new broker.
@@ -61,13 +66,14 @@ func New() *Broker {
 	ctx, cancelFunc := context.WithCancel(context.Background())
 
 	broker := &Broker{
-		ctx:           ctx,
-		cancelFunc:    cancelFunc,
-		topics:        trie.NewPathTrie(),
-		publishCh:     make(chan Message, defaultPublishChanlen),
-		subscribeCh:   make(chan Subscriber, defaultSubscribeChanLen),
-		unsubscribeCh: make(chan unsubscribe, defaultUnsubscribeChanLen),
-		closed:        make(chan interface{}),
+		ctx:             ctx,
+		cancelFunc:      cancelFunc,
+		topics:          trie.NewPathTrie(),
+		publishCh:       make(chan Message, defaultPublishChanlen),
+		subscribeCh:     make(chan Subscriber, defaultSubscribeChanLen),
+		unsubscribeCh:   make(chan unsubscribe, defaultUnsubscribeChanLen),
+		closed:          make(chan interface{}),
+		deliveryTimeout: defaultDeliveryTimeout,
 	}
 	go broker.mainLoop()
 	return broker
@@ -111,6 +117,11 @@ func (b *Broker) Publish(topic string, payload interface{}, timeout time.Duratio
 	}
 }
 
+// Counts returns the delivery count and dropped count respectively
+func (b *Broker) Counts() (deliveryCount uint64, droppedCount uint64) {
+	return atomic.LoadUint64(&b.deliveryCount), atomic.LoadUint64(&b.droppedCount)
+}
+
 // Shutdown broker
 func (b *Broker) Shutdown() {
 	b.isClosed.Store(new(interface{}))
@@ -129,8 +140,6 @@ func (b *Broker) mainLoop() {
 
 		case unsubMessage := <-b.unsubscribeCh:
 			b.unsubscribeInternal(unsubMessage)
-
-		case <-time.After(100 * time.Millisecond):
 
 		case <-b.ctx.Done():
 			b.shutdownInternal()
@@ -152,7 +161,7 @@ func (b *Broker) subscribeInternal(sub Subscriber) error {
 
 	topic, ok := t.(*topic)
 	if !ok {
-		return fmt.Errorf("Inconsistency, topic was wrong type: %t", t)
+		return fmt.Errorf("inconsistency, topic was wrong type: %t", t)
 	}
 
 	topic.Subscribers[sub.id] = &sub
@@ -185,8 +194,6 @@ func (b *Broker) unsubscribeInternal(u unsubscribe) {
 }
 
 func (b *Broker) publishInternal(m Message) {
-	deliveryCount := 0
-	droppedCount := 0
 	err := b.topics.WalkPath(m.Topic, func(key string, value interface{}) error {
 		if value == nil {
 			return fmt.Errorf("node was nil for key=%s", key)
@@ -200,10 +207,10 @@ func (b *Broker) publishInternal(m Message) {
 		for _, sub := range t.Subscribers {
 			select {
 			case sub.downstreamCh <- m:
-				deliveryCount++
+				atomic.AddUint64(&b.deliveryCount, 1)
 
-			case <-time.After(20 * time.Millisecond):
-				droppedCount++
+			case <-time.After(b.deliveryTimeout):
+				atomic.AddUint64(&b.droppedCount, 1)
 			}
 		}
 		return nil
