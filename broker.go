@@ -13,20 +13,37 @@ import (
 
 // Broker represents the message broker.
 type Broker struct {
-	ctx              context.Context
-	cancelFunc       context.CancelFunc
-	topics           *trie.PathTrie
-	publishCh        chan Message
-	subscribeCh      chan Subscriber
-	unsubscribeCh    chan unsubscribe
-	lastSubscriberID uint64
-	closed           chan interface{}
-	// fetching an atomic value is fast, so we use this as a flag to
-	// determine if writing to the channels is going to be safe.
-	isClosed        atomic.Value
-	deliveryTimeout time.Duration
-	deliveryCount   uint64
-	droppedCount    uint64
+	downStreamChanLen  int
+	publishChanLen     int
+	subscribeChanLen   int
+	unsubscribeChanLen int
+	ctx                context.Context
+	cancelFunc         context.CancelFunc
+	topics             *trie.PathTrie
+	publishCh          chan Message
+	subscribeCh        chan Subscriber
+	unsubscribeCh      chan unsubscribe
+	lastSubscriberID   uint64
+	closed             chan interface{}
+	isClosed           atomic.Value
+	deliveryTimeout    time.Duration
+	deliveryCount      uint64
+	droppedCount       uint64
+}
+
+// Config contains the broker configuration.
+type Config struct {
+	// DownStreamChanLen is the length of the channel used to send messages to the subscriber
+	DownStreamChanLen int
+	// PublishChanLen is the length of the incoming channel used by Publish()
+	PublishChanLen int
+	// SubscribeChanLen is the length of the channel that accepts Subscribe() requests
+	SubscribeChanLen int
+	// UnsubscribeChanLen is the length of the channel that accepts unsubscribe requests.
+	// This is used by the Cancel() call on Subscriber
+	UnsubscribeChanLen int
+	// DeliveryTimeout is the timeout before giving up delivering a message to a subscriber
+	DeliveryTimeout time.Duration
 }
 
 type topic struct {
@@ -57,23 +74,50 @@ const (
 	defaultPublishChanlen     = 5
 	defaultSubscribeChanLen   = 5
 	defaultUnsubscribeChanLen = 5
-
-	defaultDeliveryTimeout = 100 * time.Millisecond
+	defaultDeliveryTimeout    = 100 * time.Millisecond
 )
 
 // New returns a new broker.
-func New() *Broker {
+func New(config Config) *Broker {
 	ctx, cancelFunc := context.WithCancel(context.Background())
 
+	if config.DownStreamChanLen == 0 {
+		config.DownStreamChanLen = defaultDownstreamChanLen
+	}
+
+	if config.PublishChanLen == 0 {
+		config.PublishChanLen = defaultPublishChanlen
+	}
+
+	if config.SubscribeChanLen == 0 {
+		config.SubscribeChanLen = defaultSubscribeChanLen
+	}
+
+	if config.UnsubscribeChanLen == 0 {
+		config.UnsubscribeChanLen = defaultUnsubscribeChanLen
+	}
+
+	if config.DeliveryTimeout == 0 {
+		config.DeliveryTimeout = defaultDeliveryTimeout
+	}
+
 	broker := &Broker{
-		ctx:             ctx,
-		cancelFunc:      cancelFunc,
-		topics:          trie.NewPathTrie(),
-		publishCh:       make(chan Message, defaultPublishChanlen),
-		subscribeCh:     make(chan Subscriber, defaultSubscribeChanLen),
-		unsubscribeCh:   make(chan unsubscribe, defaultUnsubscribeChanLen),
-		closed:          make(chan interface{}),
-		deliveryTimeout: defaultDeliveryTimeout,
+		downStreamChanLen:  config.DownStreamChanLen,
+		publishChanLen:     config.PublishChanLen,
+		subscribeChanLen:   config.SubscribeChanLen,
+		unsubscribeChanLen: config.UnsubscribeChanLen,
+		ctx:                ctx,
+		cancelFunc:         cancelFunc,
+		topics:             trie.NewPathTrie(),
+		publishCh:          make(chan Message, config.PublishChanLen),
+		subscribeCh:        make(chan Subscriber, config.SubscribeChanLen),
+		unsubscribeCh:      make(chan unsubscribe, config.UnsubscribeChanLen),
+		lastSubscriberID:   0,
+		closed:             make(chan interface{}),
+		isClosed:           atomic.Value{},
+		deliveryTimeout:    config.DeliveryTimeout,
+		deliveryCount:      0,
+		droppedCount:       0,
 	}
 	go broker.mainLoop()
 	return broker
@@ -90,7 +134,7 @@ func (b *Broker) Subscribe(topicName string) (*Subscriber, error) {
 	subscriber := Subscriber{
 		id:           atomic.AddUint64(&b.lastSubscriberID, 1),
 		topicName:    topicName,
-		downstreamCh: make(chan Message, defaultDownstreamChanLen),
+		downstreamCh: make(chan Message, b.downStreamChanLen),
 		broker:       b,
 		subscribed:   make(chan interface{}),
 	}

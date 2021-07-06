@@ -10,7 +10,7 @@ import (
 
 // This is really more of a smoke test
 func TestBroker(t *testing.T) {
-	b := New()
+	b := New(Config{})
 	defer b.Shutdown()
 
 	var wgSubscribed sync.WaitGroup
@@ -61,7 +61,7 @@ func TestBroker(t *testing.T) {
 }
 
 func TestDoubleMessages(t *testing.T) {
-	b := New()
+	b := New(Config{})
 	defer b.Shutdown()
 	sub, err := b.Subscribe("/foo")
 	assert.Nil(t, err)
@@ -74,7 +74,7 @@ func TestDoubleMessages(t *testing.T) {
 func TestShutdown(t *testing.T) {
 	// Test subscribe
 	{
-		b := New()
+		b := New(Config{})
 		assert.Nil(t, b.isClosed.Load())
 		b.Shutdown()
 
@@ -85,7 +85,7 @@ func TestShutdown(t *testing.T) {
 
 	// Test publish
 	{
-		b := New()
+		b := New(Config{})
 		sub, err := b.Subscribe("/mytopic")
 		assert.NotNil(t, sub)
 		assert.Nil(t, err)
@@ -97,7 +97,7 @@ func TestShutdown(t *testing.T) {
 
 	// Test cancel
 	{
-		b := New()
+		b := New(Config{})
 		sub, err := b.Subscribe("/mytopic")
 		assert.NotNil(t, sub)
 		assert.Nil(t, err)
