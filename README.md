@@ -11,7 +11,7 @@ publish-subscribe mechanism for Go using channels.
 
 ### Creating a new broker
 
- broker := broker.New(broker.Config{})
+    broker := broker.New(broker.Config{})
   
 ### Subscribe to topic or topic prefix
   
