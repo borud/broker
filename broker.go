@@ -10,8 +10,8 @@ import (
 )
 
 // Printfer is a Printf'er - that is, you can give it a function that looks
-// like Printf.
-type Printfer func(string, ...interface{}) (int, error)
+// like log.Printf.
+type Printfer func(string, ...interface{})
 
 // Broker represents the message broker.
 type Broker struct {
@@ -105,7 +105,7 @@ func New(config Config) *Broker {
 	}
 
 	if config.Logger == nil {
-		config.Logger = func(string, ...interface{}) (int, error) { return 0, nil }
+		config.Logger = func(string, ...interface{}) {}
 	}
 
 	broker := &Broker{

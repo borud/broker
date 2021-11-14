@@ -1,7 +1,7 @@
 package broker
 
 import (
-	"fmt"
+	"log"
 	"sync"
 	"testing"
 	"time"
@@ -11,7 +11,7 @@ import (
 
 // This is really more of a smoke test
 func TestBroker(t *testing.T) {
-	b := New(Config{})
+	b := New(Config{Logger: log.Printf})
 
 	var wgSubscribed sync.WaitGroup
 	wgSubscribed.Add(2)
@@ -58,11 +58,14 @@ func TestBroker(t *testing.T) {
 	assert.Nil(t, err)
 
 	wgCount.Wait()
+
+	// Test double shutdowns
+	b.Shutdown()
 	b.Shutdown()
 }
 
 func TestDoubleMessages(t *testing.T) {
-	b := New(Config{})
+	b := New(Config{Logger: log.Printf})
 	defer b.Shutdown()
 	sub, err := b.Subscribe("/foo")
 	assert.Nil(t, err)
@@ -75,7 +78,7 @@ func TestDoubleMessages(t *testing.T) {
 func TestShutdown(t *testing.T) {
 	// Test subscribe
 	{
-		b := New(Config{})
+		b := New(Config{Logger: log.Printf})
 		assert.Nil(t, b.isClosed.Load())
 		b.Shutdown()
 
@@ -98,7 +101,7 @@ func TestShutdown(t *testing.T) {
 
 	// Test cancel
 	{
-		b := New(Config{})
+		b := New(Config{Logger: log.Printf})
 		sub, err := b.Subscribe("/mytopic")
 		assert.NotNil(t, sub)
 		assert.Nil(t, err)
@@ -117,7 +120,7 @@ func BenchmarkSimple(b *testing.B) {
 		SubscribeChanLen:   1,
 		UnsubscribeChanLen: 1,
 		DeliveryTimeout:    5 * time.Millisecond,
-		Logger:             fmt.Printf,
+		Logger:             log.Printf,
 	})
 
 	wg := sync.WaitGroup{}
