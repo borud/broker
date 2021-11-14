@@ -4,12 +4,16 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
 	"sync/atomic"
 	"time"
 
 	"github.com/dghubble/trie"
 )
+
+// Logger defines the internal error logging interface.
+type Logger interface {
+	Printf(string, ...interface{})
+}
 
 // Broker represents the message broker.
 type Broker struct {
@@ -29,6 +33,7 @@ type Broker struct {
 	deliveryTimeout    time.Duration
 	deliveryCount      uint64
 	droppedCount       uint64
+	logger             Logger
 }
 
 // Config contains the broker configuration.
@@ -44,6 +49,9 @@ type Config struct {
 	UnsubscribeChanLen int
 	// DeliveryTimeout is the timeout before giving up delivering a message to a subscriber
 	DeliveryTimeout time.Duration
+	// Logger provides a logger for logging errors.  Libraries shouldn't log so
+	// this is a compromise.
+	Logger Logger
 }
 
 type topic struct {
@@ -118,6 +126,7 @@ func New(config Config) *Broker {
 		deliveryTimeout:    config.DeliveryTimeout,
 		deliveryCount:      0,
 		droppedCount:       0,
+		logger:             config.Logger,
 	}
 	go broker.mainLoop()
 	return broker
@@ -218,14 +227,14 @@ func (b *Broker) subscribeInternal(sub Subscriber) error {
 
 func (b *Broker) unsubscribeInternal(u unsubscribe) {
 	t := b.topics.Get(u.topicName)
-	if t == nil {
-		log.Printf("inconsistency: unsubscribe, topic %s did not exist", u.topicName)
+	if t == nil && b.logger != nil {
+		b.logger.Printf("inconsistency: unsubscribe, topic %s did not exist", u.topicName)
 		return
 	}
 
 	topic, ok := t.(*topic)
-	if !ok {
-		log.Printf("inconsistency, topic was wrong type: %t", t)
+	if !ok && b.logger != nil {
+		b.logger.Printf("inconsistency, topic was wrong type: %t", t)
 		return
 	}
 
@@ -255,16 +264,16 @@ func (b *Broker) publishInternal(m Message) {
 
 			case <-time.After(b.deliveryTimeout):
 				atomic.AddUint64(&b.droppedCount, 1)
-				log.Printf("dropped message after deliveryTimeout: %+v", m)
+				if b.logger != nil {
+					b.logger.Printf("dropped message after deliveryTimeout: %+v", m)
+				}
 			}
 		}
 		return nil
 	})
-	if err != nil {
-		log.Printf("Error walking topic tree: %v", err)
+	if err != nil && b.logger != nil {
+		b.logger.Printf("error walking topic tree: %v", err)
 	}
-
-	// log.Printf("Delivered %d, dropped %d", deliveryCount, droppedCount)
 }
 
 func (b *Broker) shutdownInternal() {
@@ -284,8 +293,8 @@ func (b *Broker) shutdownInternal() {
 		return nil
 	})
 
-	if err != nil {
-		log.Printf("Error shutting down, Walk returned an error: %v", err)
+	if err != nil && b.logger != nil {
+		b.logger.Printf("error shutting down, Walk returned an error: %v", err)
 	}
 	close(b.closed)
 }
