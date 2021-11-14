@@ -1,7 +1,6 @@
 package broker
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"sync/atomic"
@@ -20,14 +19,13 @@ type Broker struct {
 	publishChanLen     int
 	subscribeChanLen   int
 	unsubscribeChanLen int
-	ctx                context.Context
-	cancelFunc         context.CancelFunc
 	topics             *trie.PathTrie
 	publishCh          chan Message
 	subscribeCh        chan Subscriber
 	unsubscribeCh      chan unsubscribe
+	shutdownCh         chan struct{}
 	lastSubscriberID   uint64
-	closed             chan interface{}
+	closed             chan struct{}
 	isClosed           atomic.Value
 	deliveryTimeout    time.Duration
 	deliveryCount      uint64
@@ -86,8 +84,6 @@ const (
 
 // New returns a new broker.
 func New(config Config) *Broker {
-	ctx, cancelFunc := context.WithCancel(context.Background())
-
 	if config.DownStreamChanLen == 0 {
 		config.DownStreamChanLen = defaultDownstreamChanLen
 	}
@@ -117,14 +113,13 @@ func New(config Config) *Broker {
 		publishChanLen:     config.PublishChanLen,
 		subscribeChanLen:   config.SubscribeChanLen,
 		unsubscribeChanLen: config.UnsubscribeChanLen,
-		ctx:                ctx,
-		cancelFunc:         cancelFunc,
 		topics:             trie.NewPathTrie(),
 		publishCh:          make(chan Message, config.PublishChanLen),
 		subscribeCh:        make(chan Subscriber, config.SubscribeChanLen),
 		unsubscribeCh:      make(chan unsubscribe, config.UnsubscribeChanLen),
+		shutdownCh:         make(chan struct{}),
 		lastSubscriberID:   0,
-		closed:             make(chan interface{}),
+		closed:             make(chan struct{}),
 		isClosed:           atomic.Value{},
 		deliveryTimeout:    config.DeliveryTimeout,
 		deliveryCount:      0,
@@ -180,8 +175,11 @@ func (b *Broker) Counts() (deliveryCount uint64, droppedCount uint64) {
 
 // Shutdown broker
 func (b *Broker) Shutdown() {
-	b.isClosed.Store(new(interface{}))
-	b.cancelFunc()
+	if !b.isClosed.CompareAndSwap(nil, struct{}{}) {
+		return
+	}
+	b.isClosed.Store(struct{}{})
+	close(b.shutdownCh)
 	<-b.closed
 }
 
@@ -197,7 +195,7 @@ func (b *Broker) mainLoop() {
 		case unsubMessage := <-b.unsubscribeCh:
 			b.unsubscribeInternal(unsubMessage)
 
-		case <-b.ctx.Done():
+		case <-b.shutdownCh:
 			b.shutdownInternal()
 			return
 		}

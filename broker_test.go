@@ -1,6 +1,7 @@
 package broker
 
 import (
+	"fmt"
 	"sync"
 	"testing"
 	"time"
@@ -11,7 +12,6 @@ import (
 // This is really more of a smoke test
 func TestBroker(t *testing.T) {
 	b := New(Config{})
-	defer b.Shutdown()
 
 	var wgSubscribed sync.WaitGroup
 	wgSubscribed.Add(2)
@@ -58,6 +58,7 @@ func TestBroker(t *testing.T) {
 	assert.Nil(t, err)
 
 	wgCount.Wait()
+	b.Shutdown()
 }
 
 func TestDoubleMessages(t *testing.T) {
@@ -107,4 +108,37 @@ func TestShutdown(t *testing.T) {
 		assert.Equal(t, ErrBrokerClosed, err)
 	}
 
+}
+
+func BenchmarkSimple(b *testing.B) {
+	broker := New(Config{
+		DownStreamChanLen:  100,
+		PublishChanLen:     100,
+		SubscribeChanLen:   1,
+		UnsubscribeChanLen: 1,
+		DeliveryTimeout:    5 * time.Millisecond,
+		Logger:             fmt.Printf,
+	})
+
+	wg := sync.WaitGroup{}
+
+	for i := 0; i < 20; i++ {
+		sub, err := broker.Subscribe("/foo")
+		assert.NoError(b, err)
+		assert.NotNil(b, sub)
+		wg.Add(b.N)
+		go func() {
+			for range sub.Messages() {
+				wg.Done()
+			}
+		}()
+	}
+
+	time.Sleep(time.Second)
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		assert.NoError(b, broker.Publish("/foo/bar/gazonk", struct{}{}, time.Second))
+	}
+	wg.Wait()
+	broker.Shutdown()
 }
