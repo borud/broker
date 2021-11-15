@@ -11,8 +11,26 @@ publish-subscribe mechanism for Go using channels.
 
 ### Creating a new broker
 
-    broker := broker.New(broker.Config{})
-  
+    broker := New(Config{
+        DownStreamChanLen:  100,
+        PublishChanLen:     100,
+        SubscribeChanLen:   10,
+        UnsubscribeChanLen: 10,
+        DeliveryTimeout:    10*time.Millisecond,
+    })
+
+The configuration options are
+
+- `DownStreamChanLen` is the length of the channel used to send messages to the subscriber.
+
+- `PublishChanLen` is the length of the incoming channel used by `Publish()`
+
+- `SubscribeChanLen` is the length of the channel that accepts `Subscribe()` requests
+
+- `UnsubscribeChanLen` is the length of the channel that accepts unsubscribe requests.
+
+- `DeliveryTimeout` is the timeout before giving up delivering a message to a subscriber
+
 ### Subscribe to topic or topic prefix
   
     sub, err := broker.Subscribe("/foo/bar")
@@ -29,11 +47,11 @@ publish-subscribe mechanism for Go using channels.
 
 ### Cancel a subscription
 
- err := sub.Cancel()
+    err := sub.Cancel()
 
-## Shut down broker
+### Shut down broker
 
- broker.Shutdown()
+    broker.Shutdown()
 
 ### Topics
 
@@ -46,7 +64,7 @@ Topics are hierarchical and look like filesyste paths and matching is
 by path prefix.
 
     /house/bedroom/light
- /house/bedroom/temp
+    /house/bedroom/temp
     /house/kitchen/light
     /house/kitchen/temp
     /house/kitchen/humidity
@@ -57,16 +75,16 @@ for instance if you subscribe to `/house/kitchen` you will get all
 messages sent to
 
     /house/kitchen
- /house/kitchen/light
- /house/kitchen/temp
- /house/kitchen/humidity
+    /house/kitchen/light
+    /house/kitchen/temp
+    /house/kitchen/humidity
 
 If you subscribe to `/house/kitchen/temp` you will only get messages
 sent to this single topic since it has no children.
 
 At this time **no** wildcard matching is supported.
 
-### Logging
+## Logging
 
 Libraries shouldn't emit log messages, but sometimes you might want to output log messages if you suspect something funny is going on.  You can register your own logger via the `Config` type, like this:
 
