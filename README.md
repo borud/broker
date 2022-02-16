@@ -41,9 +41,9 @@ The configuration options are
         log.Printf("topic = '%s', message = '%+v'", msg.Topic, msg.Payload)
     }
 
-### Publish message to broker
+### Publish message to broker with timeout
 
-    err := broker.Publish("/foo", "some payload")
+    err := broker.Publish("/foo", "some payload", 300 * time.Millisecond)
 
 ### Cancel a subscription
 
