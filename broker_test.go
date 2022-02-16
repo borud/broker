@@ -117,30 +117,28 @@ func BenchmarkSimple(b *testing.B) {
 	broker := New(Config{
 		DownStreamChanLen:  100,
 		PublishChanLen:     100,
-		SubscribeChanLen:   1,
-		UnsubscribeChanLen: 1,
+		SubscribeChanLen:   2,
+		UnsubscribeChanLen: 2,
 		DeliveryTimeout:    5 * time.Millisecond,
 		Logger:             log.Printf,
 	})
 
 	wg := sync.WaitGroup{}
 
-	for i := 0; i < 20; i++ {
-		sub, err := broker.Subscribe("/foo")
-		assert.NoError(b, err)
-		assert.NotNil(b, sub)
-		wg.Add(b.N)
-		go func() {
-			for range sub.Messages() {
-				wg.Done()
-			}
-		}()
-	}
+	sub, err := broker.Subscribe("/foo")
+	assert.NoError(b, err)
+	assert.NotNil(b, sub)
+	wg.Add(b.N)
+	go func() {
+		for range sub.Messages() {
+			wg.Done()
+		}
+	}()
 
-	time.Sleep(time.Second)
+	time.Sleep(10 * time.Millisecond)
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		assert.NoError(b, broker.Publish("/foo/bar/gazonk", struct{}{}, time.Second))
+		assert.NoError(b, broker.Publish("/foo/bar/gazonk", "test payload", time.Second))
 	}
 	wg.Wait()
 	broker.Shutdown()
