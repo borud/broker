@@ -66,7 +66,7 @@ func TestBroker(t *testing.T) {
 }
 
 func TestUnsubscribe(t *testing.T) {
-	b := New(Config{Logger: log.Printf})
+	b := New(Default())
 	defer b.Shutdown()
 	sub, err := b.Subscribe("/foo")
 	assert.Nil(t, err)
