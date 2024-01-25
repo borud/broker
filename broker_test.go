@@ -3,6 +3,7 @@ package broker
 import (
 	"log"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -62,6 +63,55 @@ func TestBroker(t *testing.T) {
 	// Test double shutdowns
 	b.Shutdown()
 	b.Shutdown()
+}
+
+func TestUnsubscribe(t *testing.T) {
+	b := New(Default())
+	defer b.Shutdown()
+	sub, err := b.Subscribe("/foo")
+	assert.Nil(t, err)
+	assert.NotNil(t, sub)
+	doneCh := make(chan struct{})
+
+	go func() {
+		select {
+		case <-doneCh:
+			return
+		case <-sub.Messages():
+			assert.Fail(t, "should not receive any messages")
+		}
+	}()
+	sub.Messages()
+	err = sub.Cancel()
+	assert.Nil(t, err)
+	err = b.Publish("/foo", "should not be received", 0)
+	assert.Nil(t, err)
+	doneCh <- struct{}{} // clean up go routine
+}
+
+func TestPublishTimeout(t *testing.T) {
+	b := New(Config{Logger: log.Printf, DeliveryTimeout: time.Nanosecond})
+	defer b.Shutdown()
+	sub, err := b.Subscribe("/foo")
+	assert.Nil(t, err)
+	waitCh := make(chan struct{})
+	go func() {
+		<-waitCh // blocking message delivery
+		select {
+		case <-waitCh:
+			return
+		case <-sub.Messages():
+			assert.Fail(t, "should not receive any messages")
+		}
+
+	}()
+	err = b.Publish("/foo", "payload", 0)
+	assert.Nil(t, err)
+	time.Sleep(time.Millisecond * 10) // arbitrary sleep to make sure message the goroutine will block
+	waitCh <- struct{}{}              // release message delivery
+	time.Sleep(time.Millisecond * 10) // sleep and make sure the message doesn't arrive
+	assert.Equal(t, uint64(1), atomic.LoadUint64(&b.droppedCount))
+	close(waitCh)
 }
 
 func TestDoubleMessages(t *testing.T) {

@@ -84,25 +84,6 @@ const (
 
 // New returns a new broker.
 func New(config Config) *Broker {
-	if config.DownStreamChanLen == 0 {
-		config.DownStreamChanLen = defaultDownstreamChanLen
-	}
-
-	if config.PublishChanLen == 0 {
-		config.PublishChanLen = defaultPublishChanlen
-	}
-
-	if config.SubscribeChanLen == 0 {
-		config.SubscribeChanLen = defaultSubscribeChanLen
-	}
-
-	if config.UnsubscribeChanLen == 0 {
-		config.UnsubscribeChanLen = defaultUnsubscribeChanLen
-	}
-
-	if config.DeliveryTimeout == 0 {
-		config.DeliveryTimeout = defaultDeliveryTimeout
-	}
 
 	if config.Logger == nil {
 		config.Logger = func(string, ...interface{}) {}
@@ -130,6 +111,18 @@ func New(config Config) *Broker {
 	return broker
 }
 
+// Default returns the default configuration
+func Default() Config {
+	return Config{
+		DownStreamChanLen:  defaultDownstreamChanLen,
+		PublishChanLen:     defaultPublishChanlen,
+		SubscribeChanLen:   defaultSubscribeChanLen,
+		UnsubscribeChanLen: defaultUnsubscribeChanLen,
+		DeliveryTimeout:    defaultDeliveryTimeout,
+		Logger:             func(string, ...interface{}) {},
+	}
+}
+
 // Subscribe creates a subscription and asks the broker to add it to
 // its subscribers.
 func (b *Broker) Subscribe(topicName string) (*Subscriber, error) {
@@ -149,7 +142,7 @@ func (b *Broker) Subscribe(topicName string) (*Subscriber, error) {
 	return &subscriber, nil
 }
 
-// Publish a payload to topic.
+// Publish a payload to topic. Timeout can be 0 to indicate no timeout.
 func (b *Broker) Publish(topic string, payload interface{}, timeout time.Duration) error {
 	if b.isClosed.Load() != nil {
 		return ErrBrokerClosed
@@ -159,12 +152,16 @@ func (b *Broker) Publish(topic string, payload interface{}, timeout time.Duratio
 		Topic:   topic,
 		Payload: payload,
 	}
-
-	select {
-	case b.publishCh <- m:
+	if timeout == 0 {
+		b.publishCh <- m
 		return nil
-	case <-time.After(timeout):
-		return ErrTimedTimedOut
+	} else {
+		select {
+		case b.publishCh <- m:
+			return nil
+		case <-time.After(timeout):
+			return ErrTimedTimedOut
+		}
 	}
 }
 
@@ -259,13 +256,17 @@ func (b *Broker) publishInternal(m Message) {
 		}
 
 		for _, sub := range t.Subscribers {
-			select {
-			case sub.downstreamCh <- m:
+			if b.deliveryTimeout == 0 { // no timeout is set
+				sub.downstreamCh <- m
 				atomic.AddUint64(&b.deliveryCount, 1)
-
-			case <-time.After(b.deliveryTimeout):
-				atomic.AddUint64(&b.droppedCount, 1)
-				b.logPrintf("dropped message after deliveryTimeout: %+v", m)
+			} else {
+				select {
+				case sub.downstreamCh <- m:
+					atomic.AddUint64(&b.deliveryCount, 1)
+				case <-time.After(b.deliveryTimeout):
+					atomic.AddUint64(&b.droppedCount, 1)
+					b.logPrintf("dropped message after deliveryTimeout: %+v", m)
+				}
 			}
 		}
 		return nil
