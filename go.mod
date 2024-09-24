@@ -1,4 +1,4 @@
-module github.com/borud/broker
+module github.com/borud/broker/v2
 
 go 1.15
 
