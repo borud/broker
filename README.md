@@ -7,7 +7,7 @@ publish-subscribe mechanism for Go using channels.
 
 ## Usage
 
-    import "github.com/borud/broker"
+    import "github.com/borud/broker/v2"
 
 ### Creating a new broker
 
